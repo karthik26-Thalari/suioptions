@@ -100,3 +100,6 @@ coverage/
 .cache/
 .parcel-cache/
 .turbo/
+# ── Local Pyth/Wormhole clones ────────────────────────────────────
+pyth-crosschain/
+wormhole/

@@ -1,68 +1,141 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ConnectButton } from "@mysten/dapp-kit";
+import { useState } from "react";
 
 export default function Navbar() {
   const { pathname } = useLocation();
+  const navigate     = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const isHome      = pathname === "/";
+  const isDashboard = ["/options","/vault","/portfolio"].includes(pathname);
+
   const links = [
-    { to:"/options",   label:"Options"   },
-    { to:"/vault",     label:"Vault"     },
-    { to:"/portfolio", label:"Portfolio" },
+    { to: "/options",   label: "Options"   },
+    { to: "/vault",     label: "Vault"     },
+    { to: "/portfolio", label: "Portfolio" },
   ];
 
   return (
-    <nav style={{
-      position:"fixed",top:0,left:0,right:0,zIndex:200,
-      height:60,display:"flex",alignItems:"center",
-      justifyContent:"space-between",padding:"0 36px",
-      background:"rgba(6,8,15,0.75)",
-      backdropFilter:"blur(24px)",
-      WebkitBackdropFilter:"blur(24px)",
-      borderBottom:"1px solid rgba(255,255,255,0.06)",
-      boxShadow:"0 1px 0 rgba(139,92,246,0.08)",
-    }}>
+    <>
+      <nav style={{
+        position:       "fixed",
+        top:            0, left: 0, right: 0,
+        zIndex:         200,
+        height:         56,
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "space-between",
+        padding:        "0 32px",
+        background:     "rgba(8,8,8,0.92)",
+        backdropFilter: "blur(20px)",
+        borderBottom:   "1px solid #1a1a1a",
+      }}>
 
-      {/* Logo */}
-      <Link to="/" style={{display:"flex",alignItems:"center",gap:10,textDecoration:"none"}}>
+        {/* Logo */}
+        <Link to="/" style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+          <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 22, letterSpacing: 1, color: "#f0ede8" }}>
+            SuiOptions
+          </span>
+          <span style={{ fontSize: 10, color: "#444", verticalAlign: "super" }}>®</span>
+        </Link>
+
+        {/* Center nav — only on dashboard */}
+        {isDashboard && (
+          <div style={{ display: "flex", gap: 24, position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
+            {links.map(l => (
+              <Link key={l.to} to={l.to} style={{
+                fontFamily:    "'JetBrains Mono',monospace",
+                fontSize:      11,
+                letterSpacing: 1,
+                color:         pathname === l.to ? "#f0ede8" : "#444",
+                textTransform: "uppercase",
+                borderBottom:  pathname === l.to ? "1px solid #f0ede8" : "1px solid transparent",
+                paddingBottom:  2,
+                transition:    "color 0.2s",
+              }}>
+                {l.label}
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Right */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="live-dot"/>
+            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "#444", letterSpacing: 1 }}>
+              TESTNET
+            </span>
+          </div>
+
+          {/* Button changes based on page */}
+          {isHome ? (
+            <button onClick={() => navigate("/options")} style={{
+              background: "#f0ede8", color: "#080808", border: "none",
+              padding: "8px 20px", borderRadius: 100, fontSize: 12,
+              fontWeight: 600, letterSpacing: 0.3, fontFamily: "'Inter',sans-serif",
+            }}>
+              Launch App →
+            </button>
+          ) : (
+            <button onClick={() => navigate("/")} style={{
+              background: "transparent", color: "#f0ede8",
+              border: "1px solid #333", padding: "8px 20px",
+              borderRadius: 100, fontSize: 12, fontWeight: 600,
+              letterSpacing: 0.3, fontFamily: "'Inter',sans-serif",
+            }}>
+              ← Home
+            </button>
+          )}
+
+          <ConnectButton/>
+
+          <button onClick={() => setMenuOpen(o => !o)} style={{
+            background: "none", border: "none",
+            fontSize: 12, fontWeight: 600, letterSpacing: 2, color: "#444",
+          }}>
+            {menuOpen ? "CLOSE" : "MENU"}
+          </button>
+        </div>
+      </nav>
+
+      {/* Fullscreen menu */}
+      {menuOpen && (
         <div style={{
-          width:32,height:32,borderRadius:10,
-          background:"linear-gradient(135deg,#8b5cf6 0%,#3b82f6 100%)",
-          display:"flex",alignItems:"center",justifyContent:"center",
-          fontSize:14,fontWeight:800,color:"white",
-          boxShadow:"0 4px 12px rgba(139,92,246,0.4)",
-        }}>S</div>
-        <div>
-          <div style={{fontSize:14,fontWeight:700,color:"#f1f5f9",letterSpacing:-.3,lineHeight:1}}>SuiOptions</div>
-          <div style={{fontSize:10,color:"#475569",letterSpacing:.5,lineHeight:1.4}}>OPTIONS PROTOCOL</div>
+          position: "fixed", inset: 0, zIndex: 190,
+          background: "#080808", display: "flex",
+          flexDirection: "column", justifyContent: "center", padding: "0 48px",
+        }}>
+          <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#444", letterSpacing: 2, marginBottom: 40 }}>
+            {">"} NAVIGATE
+          </div>
+          {links.map((l, i) => (
+            <Link key={l.to} to={l.to} onClick={() => setMenuOpen(false)} style={{
+              fontFamily: "'Bebas Neue',sans-serif",
+              fontSize:   "clamp(48px,8vw,96px)",
+              lineHeight: 0.95, letterSpacing: 1,
+              color:      pathname === l.to ? "#f0ede8" : "#2a2a2a",
+              marginBottom: 8, display: "block", transition: "color 0.2s",
+            }}
+              onMouseEnter={e => e.target.style.color = "#f0ede8"}
+              onMouseLeave={e => e.target.style.color = pathname === l.to ? "#f0ede8" : "#2a2a2a"}
+            >
+              {`0${i+1}`} {l.label.toUpperCase()}.
+            </Link>
+          ))}
+          <div style={{ marginTop: 48, paddingTop: 24, borderTop: "1px solid #1a1a1a", display: "flex", gap: 24 }}>
+            <a href="https://suiscan.xyz/testnet" target="_blank"
+              style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#444", letterSpacing: 1 }}>
+              EXPLORER ↗
+            </a>
+            <a href="https://overflow.sui.io" target="_blank"
+              style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#444", letterSpacing: 1 }}>
+              SUI OVERFLOW 2026 ↗
+            </a>
+          </div>
         </div>
-      </Link>
-
-      {/* Links */}
-      <div style={{display:"flex",gap:2,padding:"4px",background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(255,255,255,0.05)"}}>
-        {links.map(l=>(
-          <Link key={l.to} to={l.to} style={{
-            padding:"7px 20px",borderRadius:9,fontSize:13,fontWeight:500,
-            color: pathname===l.to ? "#f1f5f9" : "#64748b",
-            background: pathname===l.to
-              ? "linear-gradient(135deg,rgba(139,92,246,0.2),rgba(59,130,246,0.2))"
-              : "transparent",
-            border: pathname===l.to ? "1px solid rgba(139,92,246,0.2)" : "1px solid transparent",
-            textDecoration:"none",
-            transition:"all .2s",
-            letterSpacing:-.1,
-          }}>{l.label}</Link>
-        ))}
-      </div>
-
-      {/* Right */}
-      <div style={{display:"flex",alignItems:"center",gap:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:8,background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.15)"}}>
-          <div style={{width:5,height:5,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 6px #22c55e"}}/>
-          <span style={{fontSize:11,color:"#22c55e",fontWeight:500,letterSpacing:.5}}>Testnet</span>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <ConnectButton/>
-</div>
-      </div>
-    </nav>
+      )}
+    </>
   );
 }

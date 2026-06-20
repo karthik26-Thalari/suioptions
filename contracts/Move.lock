@@ -10,7 +10,25 @@ use_environment = "testnet"
 manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
 deps = {}
 
+[pinned.testnet.MoveStdlib_1]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = 'crates\sui-framework\packages\move-stdlib', rev = "041c5f2bae2fe52079e44b70514333532d69f4e6" }
+use_environment = "testnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.testnet.Pyth]
+source = { local = 'D:\pyth-crosschain\target_chains\sui\contracts' }
+use_environment = "testnet"
+manifest_digest = "9BC3FEB45EAB5ED413108577F2C2651304EDE5769621746DE3D227E63CCCC8D8"
+deps = { Sui = "Sui", wormhole = "wormhole" }
+
 [pinned.testnet.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = 'crates\sui-framework\packages\sui-framework', rev = "041c5f2bae2fe52079e44b70514333532d69f4e6" }
+use_environment = "testnet"
+manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
+deps = { MoveStdlib = "MoveStdlib_1" }
+
+[pinned.testnet.Sui_1]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = 'crates\sui-framework\packages\sui-framework', rev = "ff1fe0ec455153707136cffd0dc77dfb77ba9ad5" }
 use_environment = "testnet"
 manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
@@ -19,5 +37,11 @@ deps = { MoveStdlib = "MoveStdlib" }
 [pinned.testnet.sui_options]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "0532D72C4F42A4472D331C54E2F8FB1595A305815D58568D26C6F8A4AC9BBFCE"
+manifest_digest = "4F220EB255FB4C2D6765EFEA7AFA8DD127D60A98E844D62F6E27EEF493CB20C6"
+deps = { MoveStdlib = "MoveStdlib", Pyth = "Pyth", Sui = "Sui_1", wormhole = "wormhole" }
+
+[pinned.testnet.wormhole]
+source = { local = 'D:\wormhole\sui\wormhole' }
+use_environment = "testnet"
+manifest_digest = "6996F1AB8CD448FFBA142C085C488FE8A46B485E61E38A1891EFA52B30D9C12E"
 deps = { Sui = "Sui" }

@@ -1,217 +1,296 @@
+import { useState, useEffect } from "react";
 import { useCurrentAccount, useSuiClient, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Transaction } from "@mysten/sui/transactions";
-import { useState } from "react";
 import { PACKAGE, VAULT_REG } from "../config";
 
 const EX = "https://suiscan.xyz/testnet";
 
+function TypeLabel({ text, delay = 0 }) {
+  const [shown, setShown] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      let i = 0;
+      const iv = setInterval(() => {
+        i++;
+        setShown(text.slice(0, i));
+        if (i >= text.length) clearInterval(iv);
+      }, 28);
+      return () => clearInterval(iv);
+    }, delay);
+    return () => clearTimeout(t);
+  }, [text, delay]);
+  return (
+    <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#444", letterSpacing: 1 }}>
+      {">"} {shown}<span className="term-cursor"/>
+    </span>
+  );
+}
+
 export default function Vault() {
-  const account      = useCurrentAccount();
-  const client       = useSuiClient();
-  const queryClient  = useQueryClient();
+  const account     = useCurrentAccount();
+  const client      = useSuiClient();
+  const queryClient = useQueryClient();
   const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+
   const [amount, setAmount]   = useState("0.1");
   const [loading, setLoading] = useState(false);
   const [txHash, setTxHash]   = useState(null);
   const [error, setError]     = useState(null);
 
-  const { data: vaultData, refetch: refetchVault } = useQuery({
+  const { data: vaultData, refetch } = useQuery({
     queryKey: ["vault", VAULT_REG],
     queryFn: async () => (await client.getObject({ id: VAULT_REG, options: { showContent: true } })).data?.content?.fields,
     refetchInterval: 5000,
   });
 
   const tvl = vaultData?.total_tvl ? (Number(vaultData.total_tvl) / 1e9).toFixed(3) : "0.000";
-  const lps  = vaultData?.total_lps ?? "0";
+  const lps = vaultData?.total_lps ?? "0";
 
-  const handleDeposit = async () => {
-    if (!account) return;
+  const handleDeposit = () => {
+    if (!account || loading) return;
     setLoading(true);
     setError(null);
     setTxHash(null);
-
     try {
-      const amountMist = BigInt(Math.floor(Number(amount) * 1e9));
-      const tx = new Transaction();
+      const mist = BigInt(Math.floor(Number(amount) * 1e9));
+      const tx   = new Transaction();
       tx.setSender(account.address);
-      const coin = tx.splitCoins(tx.gas, [tx.pure.u64(amountMist)]);
+      const coin = tx.splitCoins(tx.gas, [tx.pure.u64(mist)]);
       tx.moveCall({
-        target: `${PACKAGE}::vault::deposit`,
-        arguments: [
-          tx.object(VAULT_REG),
-          coin,
-        ],
+        target:    `${PACKAGE}::vault::deposit`,
+        arguments: [tx.object(VAULT_REG), coin],
       });
-
-      signAndExecute(
-        { transaction: tx },
-        {
-          onSuccess: async (result) => {
-            setTxHash(result.digest);
-            setLoading(false);
-            // Refetch vault data after 2s
-            setTimeout(async () => {
-              await refetchVault();
-              await queryClient.invalidateQueries(["vault"]);
-            }, 2000);
-          },
-          onError: (err) => {
-            setError(err.message || "Transaction failed — make sure Slush is on Testnet");
-            setLoading(false);
-          },
-        }
-      );
+      signAndExecute({ transaction: tx }, {
+        onSuccess: async (result) => {
+          setTxHash(result.digest);
+          setLoading(false);
+          setTimeout(async () => {
+            await refetch();
+            await queryClient.invalidateQueries(["vault"]);
+          }, 2000);
+        },
+        onError: (err) => {
+          setError(err.message || "Tx failed — check Slush is on Testnet");
+          setLoading(false);
+        },
+      });
     } catch (err) {
       setError(err.message);
       setLoading(false);
     }
   };
 
+  const S = {
+    page:  { background: "#080808", minHeight: "100vh", paddingTop: 56 },
+    label: { fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "#444", letterSpacing: 1 },
+    mono:  { fontFamily: "'JetBrains Mono',monospace" },
+    bebas: (sz) => ({ fontFamily: "'Bebas Neue',sans-serif", fontSize: sz, letterSpacing: 1, color: "#f0ede8" }),
+    input: {
+      background:  "#111",
+      border:      "1px solid #1a1a1a",
+      borderRadius: 6,
+      padding:     "12px 16px",
+      fontSize:    16,
+      fontWeight:  500,
+      color:       "#f0ede8",
+      width:       140,
+      outline:     "none",
+      fontFamily:  "'JetBrains Mono',monospace",
+    },
+    qBtn: (active) => ({
+      background:  active ? "#f0ede8" : "#111",
+      border:      "1px solid " + (active ? "#f0ede8" : "#1a1a1a"),
+      borderRadius: 4,
+      padding:     "8px 14px",
+      fontSize:    13,
+      color:       active ? "#080808" : "#555",
+      fontFamily:  "'JetBrains Mono',monospace",
+      fontWeight:  active ? 600 : 400,
+    }),
+  };
+
   return (
-    <div style={{minHeight:"100vh",paddingTop:60,background:"#06080f"}} className="grid-bg">
-      <div style={{maxWidth:1140,margin:"0 auto",padding:"40px 36px 80px"}}>
+    <div style={S.page}>
 
-        {/* Header */}
-        <div className="fade-in" style={{marginBottom:36}}>
-          <div style={{fontSize:11,color:"#475569",letterSpacing:2,textTransform:"uppercase",marginBottom:10,fontWeight:500}}>Earn yield on idle SUI</div>
-          <div style={{fontSize:36,fontWeight:800,letterSpacing:-1.5,color:"#f1f5f9"}}>Covered Call Vault</div>
-        </div>
+      {/* ── SPLIT HERO ── */}
+      <section style={{
+        display:             "grid",
+        gridTemplateColumns: "1fr 1fr",
+        borderBottom:        "1px solid #1a1a1a",
+        minHeight:           420,
+      }}>
 
-        {/* Live vault stats */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
-          {[
-            {label:"Total Value Locked", val:`${tvl} SUI`},
-            {label:"Total Depositors",   val:lps},
-            {label:"Strategy",           val:"10% OTM Calls"},
-          ].map((s,i)=>(
-            <div key={i} className="glass-card" style={{padding:"18px 20px"}}>
-              <div style={{fontSize:11,color:"#475569",textTransform:"uppercase",letterSpacing:.5,marginBottom:8,fontWeight:500}}>{s.label}</div>
-              <div style={{fontSize:20,fontWeight:700,color:"#a78bfa",letterSpacing:-.3}}>{s.val}</div>
+        {/* LEFT — heading + APY */}
+        <div style={{
+          padding:        "56px 40px",
+          borderRight:    "1px solid #1a1a1a",
+          display:        "flex",
+          flexDirection:  "column",
+          justifyContent: "space-between",
+        }}>
+          <div>
+            <TypeLabel text="EARN YIELD ON IDLE SUI · COVERED CALLS" delay={100}/>
+            <div style={{ ...S.bebas("clamp(56px,7vw,96px)"), marginTop: 20, lineHeight: 0.9 }}>
+              COVERED<br/>CALL<br/>VAULT.
             </div>
-          ))}
-        </div>
-
-        {/* Info cards */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
-          {[
-            {icon:"🎯",label:"Strategy",        val:"Auto-write 10% OTM calls weekly",  accent:false},
-            {icon:"📈",label:"Est. Weekly APY", val:"3 – 8%",                           accent:true},
-            {icon:"⚡",label:"Settlement",      val:"Automatic · Pyth oracle",          accent:false},
-            {icon:"🔒",label:"Collateral",      val:"SUI · locked until expiry",        accent:false},
-          ].map((s,i)=>(
-            <div key={i} className="glass-card" style={{padding:28,display:"flex",gap:20,alignItems:"flex-start"}}>
-              <div style={{fontSize:28,flexShrink:0}}>{s.icon}</div>
-              <div>
-                <div style={{fontSize:11,color:"#475569",textTransform:"uppercase",letterSpacing:.5,marginBottom:10,fontWeight:500}}>{s.label}</div>
-                <div style={{fontSize:20,fontWeight:700,color:s.accent?"#a78bfa":"#e2e8f0",letterSpacing:-.3}}>{s.val}</div>
-              </div>
+          </div>
+          <div>
+            <div style={{ ...S.label, marginBottom: 10 }}>EST. WEEKLY APY</div>
+            <div style={{
+              ...S.bebas("clamp(64px,8vw,104px)"),
+              color:       "#39ff14",
+              lineHeight:  0.9,
+            }}>
+              3–8%
             </div>
-          ))}
-        </div>
-
-        {/* Deposit box */}
-        <div className="glass-strong glow-purple" style={{padding:40,position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-60,right:-60,width:200,height:200,borderRadius:"50%",background:"radial-gradient(circle,rgba(139,92,246,0.1) 0%,transparent 70%)",pointerEvents:"none"}}/>
-
-          <div style={{position:"relative"}}>
-            <div style={{fontSize:20,fontWeight:700,color:"#f1f5f9",marginBottom:8,letterSpacing:-.3}}>Deposit SUI</div>
-
-            {/* Testnet notice */}
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20,padding:"10px 14px",background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.15)",borderRadius:8}}>
-              <span style={{fontSize:16}}>💡</span>
-              <span style={{fontSize:12,color:"#a78bfa"}}>
-                Testnet only — no real money. Make sure Slush wallet is set to <b>Testnet</b>.
-              </span>
-            </div>
-
-            <div style={{fontSize:14,color:"#64748b",marginBottom:28,lineHeight:1.65,maxWidth:560}}>
-              Deposit SUI into the vault. The vault automatically writes covered calls at 10% OTM
-              strike and collects premium upfront. At expiry — if OTM you keep premium + SUI.
-              If ITM, SUI is delivered at strike and you keep the premium.
-            </div>
-
-            {account ? (
-              <div>
-                {/* Amount input */}
-                <div style={{marginBottom:24}}>
-                  <div style={{fontSize:12,color:"#475569",marginBottom:10,letterSpacing:.3,fontWeight:500}}>Amount (SUI)</div>
-                  <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={e=>setAmount(e.target.value)}
-                      min="0.01"
-                      step="0.01"
-                      style={{
-                        background:"rgba(255,255,255,0.05)",
-                        border:"1px solid rgba(255,255,255,0.1)",
-                        borderRadius:10,
-                        padding:"12px 16px",
-                        fontSize:16,
-                        fontWeight:600,
-                        color:"#f1f5f9",
-                        width:160,
-                        outline:"none",
-                        fontFamily:"Inter,sans-serif",
-                      }}
-                    />
-                    <span style={{fontSize:14,color:"#475569"}}>SUI</span>
-                    {["0.1","0.5","1"].map(v=>(
-                      <button key={v} onClick={()=>setAmount(v)} style={{
-                        background: amount===v ? "rgba(139,92,246,0.2)" : "rgba(255,255,255,0.04)",
-                        border: amount===v ? "1px solid rgba(139,92,246,0.4)" : "1px solid rgba(255,255,255,0.08)",
-                        borderRadius:8, padding:"9px 16px", fontSize:13,
-                        color: amount===v ? "#a78bfa" : "#475569",
-                        fontFamily:"Inter,sans-serif",
-                        fontWeight:500,
-                      }}>{v}</button>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  className="btn-primary"
-                  onClick={handleDeposit}
-                  disabled={loading}
-                  style={{fontSize:14,padding:"13px 32px",opacity:loading?0.7:1,cursor:loading?"not-allowed":"pointer"}}>
-                  {loading ? "⏳ Depositing..." : `Deposit ${amount} SUI →`}
-                </button>
-
-                {/* Success */}
-                {txHash && (
-                  <div style={{marginTop:20,padding:"20px 24px",background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:12}}>
-                    <div style={{fontSize:14,color:"#22c55e",fontWeight:700,marginBottom:8}}>✅ Deposit successful!</div>
-                    <div style={{fontSize:13,color:"#22c55e",opacity:.8,marginBottom:8}}>
-                      Your SUI is now locked in the vault. TVL will update shortly.
-                    </div>
-                    <a href={`${EX}/tx/${txHash}`} target="_blank"
-                      style={{fontSize:12,color:"#22c55e",opacity:.7,display:"flex",alignItems:"center",gap:4}}>
-                      View transaction on explorer ↗
-                    </a>
-                  </div>
-                )}
-
-                {/* Error */}
-                {error && (
-                  <div style={{marginTop:20,padding:"20px 24px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:12}}>
-                    <div style={{fontSize:14,color:"#ef4444",fontWeight:700,marginBottom:6}}>❌ Transaction Failed</div>
-                    <div style={{fontSize:12,color:"#ef4444",opacity:.8,marginBottom:8}}>{error}</div>
-                    <div style={{fontSize:12,color:"#ef4444",opacity:.6}}>
-                      Make sure Slush is on <b>Testnet</b> and you have enough SUI balance.
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{display:"inline-flex",padding:"12px 24px",border:"1px dashed rgba(255,255,255,0.08)",borderRadius:12,fontSize:13,color:"#334155",letterSpacing:.3}}>
-                Connect wallet to deposit into vault
-              </div>
-            )}
           </div>
         </div>
 
-      </div>
+        {/* RIGHT — deposit */}
+        <div style={{ padding: "56px 40px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <TypeLabel text="DEPOSIT SUI · EARN WEEKLY PREMIUM" delay={300}/>
+
+          <div style={{ marginTop: 24 }}>
+            {/* Testnet notice */}
+            <div style={{
+              display:      "flex",
+              alignItems:   "center",
+              gap:          8,
+              padding:      "10px 14px",
+              border:       "1px solid #1a1a1a",
+              borderRadius: 6,
+              marginBottom: 24,
+              ...S.label,
+              color:        "#333",
+            }}>
+              💡 Testnet only — no real money. Slush wallet must be on <strong style={{ color: "#555" }}>Testnet</strong>.
+            </div>
+
+            {/* Amount */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...S.label, marginBottom: 10 }}>AMOUNT (SUI)</div>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  min="0.01"
+                  step="0.01"
+                  style={S.input}
+                />
+                <span style={{ ...S.label }}>SUI</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {["0.1","0.5","1"].map(v => (
+                    <button key={v} onClick={() => setAmount(v)} style={S.qBtn(amount === v)}>{v}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {account ? (
+              <button
+                onClick={handleDeposit}
+                disabled={loading}
+                style={{
+                  background:    loading ? "#222" : "#f0ede8",
+                  color:         loading ? "#555" : "#080808",
+                  border:        "none",
+                  padding:       "14px 32px",
+                  fontSize:      13,
+                  fontWeight:    600,
+                  borderRadius:  6,
+                  fontFamily:    "'Inter',sans-serif",
+                  letterSpacing: 0.3,
+                  width:         "100%",
+                }}>
+                {loading ? "> DEPOSITING..." : `> Deposit ${amount} SUI →`}
+              </button>
+            ) : (
+              <div style={{
+                padding:      "14px 20px",
+                border:       "1px dashed #1a1a1a",
+                borderRadius: 6,
+                ...S.label,
+                color:        "#222",
+                textAlign:    "center",
+              }}>
+                {">"} Connect wallet to deposit
+              </div>
+            )}
+
+            {/* Success */}
+            {txHash && (
+              <div style={{
+                marginTop:    16,
+                padding:      "16px 20px",
+                border:       "1px solid #39ff1430",
+                borderRadius: 6,
+                background:   "#39ff1406",
+              }}>
+                <div style={{ ...S.mono, fontSize: 12, color: "#39ff14", marginBottom: 6 }}>
+                  {">"} DEPOSIT SUCCESSFUL ✓
+                </div>
+                <a href={`${EX}/tx/${txHash}`} target="_blank"
+                  style={{ ...S.label, color: "#39ff1488" }}>
+                  VIEW TRANSACTION ↗
+                </a>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div style={{
+                marginTop:    16,
+                padding:      "16px 20px",
+                border:       "1px solid #ff2d7830",
+                borderRadius: 6,
+                background:   "#ff2d7806",
+              }}>
+                <div style={{ ...S.mono, fontSize: 12, color: "#ff2d78", marginBottom: 4 }}>{">"} ERROR</div>
+                <div style={{ ...S.label, color: "#ff2d7888" }}>{error}</div>
+              </div>
+            )}
+          </div>
+
+          {/* TVL stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginTop: 24 }}>
+            {[
+              { label: "TVL",         val: `${tvl} SUI` },
+              { label: "Depositors",  val: lps           },
+              { label: "Strategy",    val: "10% OTM"     },
+            ].map((s, i) => (
+              <div key={i} style={{ padding: "14px 0", borderTop: "1px solid #1a1a1a" }}>
+                <div style={{ ...S.label, marginBottom: 6 }}>{s.label}</div>
+                <div style={{ ...S.mono, fontSize: 14, fontWeight: 500 }}>{s.val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── INFO CARDS ── */}
+      <section style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 40px 80px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: "#1a1a1a", border: "1px solid #1a1a1a", borderRadius: 8, overflow: "hidden" }}>
+          {[
+            { icon: "🎯", label: "Strategy",        val: "Auto-write 10% OTM calls weekly"    },
+            { icon: "⚡", label: "Settlement",       val: "Automatic · Pyth oracle"            },
+            { icon: "🔒", label: "Collateral",       val: "SUI locked until expiry"            },
+            { icon: "📈", label: "Est. Weekly APY",  val: "3 – 8%",          accent: true     },
+          ].map((s, i) => (
+            <div key={i} style={{ background: "#080808", padding: "28px 24px" }}>
+              <div style={{ fontSize: 24, marginBottom: 12 }}>{s.icon}</div>
+              <div style={{ ...S.label, marginBottom: 8 }}>{s.label}</div>
+              <div style={{
+                ...S.mono,
+                fontSize:   14,
+                fontWeight: 500,
+                color:      s.accent ? "#39ff14" : "#f0ede8",
+              }}>{s.val}</div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
