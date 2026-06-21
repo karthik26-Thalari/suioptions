@@ -109,26 +109,62 @@ export default function Options() {
     if (pythData?.price) setPrevPrice(pythData.price);
   }, [pythData?.price]);
 
-  const price     = pythData?.price ?? "—";
-  const pNum      = Number(price);
-  const bid       = md?.bid_price ? (Number(md.bid_price) / 1e6).toFixed(2) + "M" : "—";
-  const ask       = md?.ask_price ? (Number(md.ask_price) / 1e6).toFixed(2) + "M" : "—";
-  const oi        = md?.open_interest ?? "0";
-  const fmtE      = (ms) => ms ? new Date(Number(ms)).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }) : "—";
-  const fmtC      = (q)  => q  ? (Number(q) / 1e9).toFixed(2) + " SUI" : "—";
-  const fmtS      = (s)  => s  ? "$" + (Number(s) / 100).toFixed(2) : "—";
-  const secAgo    = pythData?.publishTime ? Math.floor(Date.now()/1000 - pythData.publishTime) : null;
-  const prices    = (histData ?? []).map(d => d.price);
-  const chartMin  = prices.length ? Math.min(...prices) * 0.998 : 0;
-  const chartMax  = prices.length ? Math.max(...prices) * 1.002 : 1;
+  const price    = pythData?.price ?? "—";
+  const pNum     = Number(price);
+  const bid      = md?.bid_price ? (Number(md.bid_price) / 1e6).toFixed(2) + "M" : "—";
+  const ask      = md?.ask_price ? (Number(md.ask_price) / 1e6).toFixed(2) + "M" : "—";
+  const oi       = md?.open_interest ?? "0";
+  const fmtE     = (ms) => ms ? new Date(Number(ms)).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }) : "—";
+  const fmtC     = (q)  => q  ? (Number(q) / 1e9).toFixed(2) + " SUI" : "—";
+  const fmtS     = (s)  => s  ? "$" + (Number(s) / 100).toFixed(2) : "—";
+  const secAgo   = pythData?.publishTime ? Math.floor(Date.now()/1000 - pythData.publishTime) : null;
+  const prices   = (histData ?? []).map(d => d.price);
+  const chartMin = prices.length ? Math.min(...prices) * 0.998 : 0;
+  const chartMax = prices.length ? Math.max(...prices) * 1.002 : 1;
 
-  const options = [
+  // Hardcoded options (always shown)
+  const fixedOptions = [
     { id: OPTION_ID,     type: "CALL", strike: callItm?.strike_price, expiry: callItm?.expiry_ms, coll: callItm?.quantity, itm: pNum > 0 && callItm?.strike_price ? pNum > Number(callItm.strike_price)/100 : false, color: "#00d4ff" },
     { id: PUT_ID,        type: "PUT",  strike: putItm?.strike_price,  expiry: putItm?.expiry_ms,  coll: putItm?.quantity,  itm: pNum > 0 && putItm?.strike_price  ? pNum < Number(putItm.strike_price)/100  : false, color: "#bf5cf6" },
     { id: OPTION_ID_OLD, type: "CALL", strike: callOld?.strike_price, expiry: callOld?.expiry_ms, coll: callOld?.quantity, itm: pNum > 0 && callOld?.strike_price ? pNum > Number(callOld.strike_price)/100 : false, color: "#00d4ff" },
   ];
 
-  // Exercise using exercise_with_price — uses real KuCoin market price
+  // Dynamically fetch ALL options owned by connected wallet
+  const { data: ownedOptions } = useQuery({
+    queryKey: ["owned-options", account?.address],
+    queryFn: async () => {
+      if (!account) return [];
+      const res = await client.getOwnedObjects({
+        owner:   account.address,
+        filter:  { StructType: `${PACKAGE}::options::OptionContract` },
+        options: { showContent: true },
+      });
+      return res.data?.map(o => {
+        const f   = o.data?.content?.fields;
+        const typ = f?.option_type === 0 ? "CALL" : "PUT";
+        return {
+          id:     o.data?.objectId,
+          type:   typ,
+          strike: f?.strike_price,
+          expiry: f?.expiry_ms,
+          coll:   f?.quantity,
+          color:  typ === "CALL" ? "#00d4ff" : "#bf5cf6",
+          itm:    typ === "CALL"
+            ? pNum > Number(f?.strike_price ?? 0)/100
+            : pNum < Number(f?.strike_price ?? 0)/100,
+        };
+      }).filter(Boolean) ?? [];
+    },
+    enabled:         !!account,
+    refetchInterval: 10000,
+  });
+
+  // Merge: hardcoded + wallet-owned, deduplicated by ID
+  const fixedIds = new Set(fixedOptions.map(o => o.id));
+  const extraOptions = (ownedOptions ?? []).filter(o => !fixedIds.has(o.id));
+  const allOptions = [...fixedOptions, ...extraOptions];
+
+  // Exercise handler
   const handleExercise = async (optionId, isItm) => {
     if (!account || !isItm) return;
     const priceInCents = Math.round(pNum * 100);
@@ -160,6 +196,7 @@ export default function Options() {
     }
   };
 
+  // Write option handler
   const handleWrite = async () => {
     if (!account) return;
     setWriting(true); setWriteErr(null); setWriteTx(null);
@@ -195,6 +232,8 @@ export default function Options() {
 
   return (
     <div style={S.page}>
+
+      {/* ── HERO ── */}
       <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #1a1a1a" }}>
         <div style={{ padding: "48px 40px", borderRight: "1px solid #1a1a1a", display: "flex", flexDirection: "column", gap: 20 }}>
           <TypeLabel text="SCANNING DEEPBOOK · SUI/USD · LIVE PRICE" delay={100}/>
@@ -226,10 +265,10 @@ export default function Options() {
             </div>
           )}
 
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px", border: `1px solid ${options[0].itm ? "#39ff1430" : "#ff2d7830"}`, borderRadius: 4, background: options[0].itm ? "#39ff1406" : "#ff2d7806", width: "fit-content" }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: options[0].itm ? "#39ff14" : "#ff2d78", display: "inline-block" }}/>
-            <span style={{ ...S.mono, fontSize: 12, color: options[0].itm ? "#39ff14" : "#ff2d78", fontWeight: 500, letterSpacing: 1 }}>
-              {options[0].itm ? "CALL $0.60 IN THE MONEY ✓" : "CALL $0.60 OUT OF MONEY"}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px", border: `1px solid ${fixedOptions[0].itm ? "#39ff1430" : "#ff2d7830"}`, borderRadius: 4, background: fixedOptions[0].itm ? "#39ff1406" : "#ff2d7806", width: "fit-content" }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: fixedOptions[0].itm ? "#39ff14" : "#ff2d78", display: "inline-block" }}/>
+            <span style={{ ...S.mono, fontSize: 12, color: fixedOptions[0].itm ? "#39ff14" : "#ff2d78", fontWeight: 500, letterSpacing: 1 }}>
+              {fixedOptions[0].itm ? "CALL $0.60 IN THE MONEY ✓" : "CALL $0.60 OUT OF MONEY"}
             </span>
           </div>
         </div>
@@ -238,12 +277,12 @@ export default function Options() {
           <TypeLabel text="PROTOCOL STATS · DEEPBOOK PREDICT · PYTH SETTLED" delay={300}/>
           <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 24 }}>
             {[
-              { label: "TOTAL OPTIONS",  val: "3"                       },
-              { label: "TYPES",          val: "CALL + PUT"              },
-              { label: "ORACLE",         val: "Pyth Network · On-chain" },
-              { label: "OPEN INTEREST",  val: `${oi} contracts`         },
-              { label: "BEST BID",       val: bid                       },
-              { label: "SETTLEMENT",     val: "Auto · European Style"   },
+              { label: "TOTAL OPTIONS",  val: `${allOptions.length}`         },
+              { label: "TYPES",          val: "CALL + PUT"                   },
+              { label: "ORACLE",         val: "Pyth Network · On-chain"      },
+              { label: "OPEN INTEREST",  val: `${oi} contracts`              },
+              { label: "BEST BID",       val: bid                            },
+              { label: "SETTLEMENT",     val: "Auto · European Style"        },
             ].map((s, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: i < 5 ? "1px solid #111" : "none" }}>
                 <span style={{ ...S.label }}>{s.label}</span>
@@ -257,6 +296,7 @@ export default function Options() {
         </div>
       </section>
 
+      {/* ── WRITE FORM ── */}
       {showWrite && (
         <section style={{ borderBottom: "1px solid #1a1a1a", background: "#0a0a0a" }}>
           <div style={{ ...S.wrap, paddingTop: 32, paddingBottom: 32 }}>
@@ -275,22 +315,30 @@ export default function Options() {
               <div><div style={{ ...S.label, marginBottom: 8 }}>EXPIRY</div><input type="date" value={writeExpiry} onChange={e => setWriteExpiry(e.target.value)} style={S.input}/></div>
               <div><div style={{ ...S.label, marginBottom: 8 }}>COLLATERAL (SUI)</div><input type="number" value={writeAmount} onChange={e => setWriteAmount(e.target.value)} step="0.01" min="0.01" style={S.input}/></div>
               <div>
-                {account ? (
-                  <button onClick={handleWrite} disabled={writing} style={{ background: writing ? "#222" : "#f0ede8", color: writing ? "#555" : "#080808", border: "none", padding: "11px 0", fontSize: 13, fontWeight: 600, borderRadius: 6, fontFamily: "'Inter',sans-serif", width: "100%" }}>
-                    {writing ? "> Writing..." : `Write ${writeType} →`}
-                  </button>
-                ) : <div style={{ ...S.label, color: "#333", textAlign: "center" }}>Connect wallet</div>}
+                {account
+                  ? <button onClick={handleWrite} disabled={writing} style={{ background: writing ? "#222" : "#f0ede8", color: writing ? "#555" : "#080808", border: "none", padding: "11px 0", fontSize: 13, fontWeight: 600, borderRadius: 6, fontFamily: "'Inter',sans-serif", width: "100%" }}>{writing ? "> Writing..." : `Write ${writeType} →`}</button>
+                  : <div style={{ ...S.label, color: "#333", textAlign: "center" }}>Connect wallet</div>
+                }
               </div>
             </div>
-            {writeTx && <div style={{ marginTop: 16, padding: "14px 20px", border: "1px solid #39ff1430", borderRadius: 6, background: "#39ff1406", display: "flex", justifyContent: "space-between" }}><span style={{ ...S.mono, fontSize: 12, color: "#39ff14" }}>{">"} WRITTEN ✓</span><a href={`${EX}/tx/${writeTx}`} target="_blank" style={{ ...S.label, color: "#39ff1488" }}>VIEW ↗</a></div>}
+            {writeTx && (
+              <div style={{ marginTop: 16, padding: "14px 20px", border: "1px solid #39ff1430", borderRadius: 6, background: "#39ff1406", display: "flex", justifyContent: "space-between" }}>
+                <span style={{ ...S.mono, fontSize: 12, color: "#39ff14" }}>{">"} OPTION WRITTEN ✓ — Appears in table below</span>
+                <a href={`${EX}/tx/${writeTx}`} target="_blank" style={{ ...S.label, color: "#39ff1488" }}>VIEW TX ↗</a>
+              </div>
+            )}
             {writeErr && <div style={{ marginTop: 16, padding: "14px 20px", border: "1px solid #ff2d7830", borderRadius: 6, background: "#ff2d7806" }}><span style={{ ...S.label, color: "#ff2d7888" }}>{">"} {writeErr}</span></div>}
           </div>
         </section>
       )}
 
+      {/* ── OPTION CHAIN ── */}
       <section style={{ ...S.wrap, paddingTop: 40, paddingBottom: 40 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 24, paddingBottom: 20, borderBottom: "1px solid #1a1a1a" }}>
-          <div><TypeLabel text="3 CONTRACTS · PYTH ORACLE SETTLEMENT" delay={500}/><div style={{ ...S.bebas(36), marginTop: 8 }}>OPTION CHAIN — SUI/USD</div></div>
+          <div>
+            <TypeLabel text={`${allOptions.length} CONTRACTS · PYTH ORACLE SETTLEMENT`} delay={500}/>
+            <div style={{ ...S.bebas(36), marginTop: 8 }}>OPTION CHAIN — SUI/USD</div>
+          </div>
           <div style={{ ...S.label, color: "#444" }}>LIVE: <span style={{ color: "#00d4ff" }}>${price}</span></div>
         </div>
 
@@ -298,13 +346,22 @@ export default function Options() {
           <div style={{ display: "grid", gridTemplateColumns: "80px 90px 110px 130px 100px 110px 110px 1fr", padding: "12px 20px", ...S.label, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", borderBottom: "1px solid #1a1a1a", color: "#333" }}>
             {["Type","Strike","Expiry","Collateral","Status","P&L","Time Left","Action"].map(h => <span key={h}>{h}</span>)}
           </div>
-          {options.map((opt, i) => {
+
+          {allOptions.map((opt, i) => {
             const sn   = opt.strike ? Number(opt.strike)/100 : 0;
             const pnl  = (opt.type === "CALL" ? pNum - sn : sn - pNum).toFixed(3);
             const pos  = Number(pnl) > 0;
             const isEx = exercising && exercisingId === opt.id;
+            const isExtra = i >= fixedOptions.length;
+
             return (
-              <div key={opt.id} style={{ display: "grid", gridTemplateColumns: "80px 90px 110px 130px 100px 110px 110px 1fr", padding: "18px 20px", alignItems: "center", background: i % 2 === 0 ? "#0a0a0a" : "#080808", borderBottom: i < options.length-1 ? "1px solid #0f0f0f" : "none" }}>
+              <div key={opt.id ?? i} style={{
+                display: "grid", gridTemplateColumns: "80px 90px 110px 130px 100px 110px 110px 1fr",
+                padding: "18px 20px", alignItems: "center",
+                background: isExtra ? "#0c0c06" : i % 2 === 0 ? "#0a0a0a" : "#080808",
+                borderBottom: i < allOptions.length-1 ? "1px solid #0f0f0f" : "none",
+                borderLeft: isExtra ? "2px solid #39ff1430" : "none",
+              }}>
                 <span style={{ background: opt.type === "CALL" ? "#00d4ff15" : "#bf5cf615", color: opt.type === "CALL" ? "#00d4ff" : "#bf5cf6", border: `1px solid ${opt.type === "CALL" ? "#00d4ff30" : "#bf5cf630"}`, fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 4, letterSpacing: 1, fontFamily: "'JetBrains Mono',monospace", width: "fit-content" }}>{opt.type}</span>
                 <span style={{ ...S.bebas(20), color: opt.color }}>{fmtS(opt.strike)}</span>
                 <span style={{ ...S.mono, fontSize: 11, color: "#555" }}>{fmtE(opt.expiry)}</span>
@@ -315,15 +372,16 @@ export default function Options() {
                 </div>
                 <span style={{ ...S.mono, fontSize: 12, color: pos ? "#39ff14" : "#ff2d78", fontWeight: 500 }}>{pos ? "+" : ""}{pnl}</span>
                 <span style={{ ...S.mono, fontSize: 11, color: "#444" }}>{opt.expiry ? <Countdown expiryMs={opt.expiry}/> : "—"}</span>
-                {account ? (
-                  <button onClick={() => handleExercise(opt.id, opt.itm)} disabled={!opt.itm || exercising} style={{ background: opt.itm ? (isEx ? "#222" : "#f0ede8") : "transparent", color: opt.itm ? "#080808" : "#333", border: `1px solid ${opt.itm ? "#f0ede8" : "#1a1a1a"}`, padding: "6px 14px", fontSize: 11, fontWeight: 600, borderRadius: 4, fontFamily: "'Inter',sans-serif", width: "fit-content" }}>
-                    {isEx ? "..." : opt.itm ? "Exercise →" : "OTM"}
-                  </button>
-                ) : <span style={{ ...S.label, fontSize: 10, color: "#333" }}>Connect wallet</span>}
+                {account
+                  ? <button onClick={() => handleExercise(opt.id, opt.itm)} disabled={!opt.itm || exercising} style={{ background: opt.itm ? (isEx ? "#222" : "#f0ede8") : "transparent", color: opt.itm ? "#080808" : "#333", border: `1px solid ${opt.itm ? "#f0ede8" : "#1a1a1a"}`, padding: "6px 14px", fontSize: 11, fontWeight: 600, borderRadius: 4, fontFamily: "'Inter',sans-serif", width: "fit-content" }}>
+                      {isEx ? "..." : opt.itm ? "Exercise →" : "OTM"}
+                    </button>
+                  : <span style={{ ...S.label, fontSize: 10, color: "#333" }}>Connect wallet</span>
+                }
               </div>
             );
           })}
-          <div style={{ padding: "12px 20px", ...S.label, color: "#1e1e1e" }}>{">"} Settlement via Pyth Network · European style · Trustless</div>
+          <div style={{ padding: "12px 20px", ...S.label, color: "#1e1e1e" }}>{">"} Settlement via Pyth Network · European style · Trustless · Your written options appear automatically</div>
         </div>
 
         {exerciseLog && <div style={{ marginTop: 12, padding: "12px 20px", border: "1px solid #1a1a1a", borderRadius: 6, background: "#0a0a0a" }}><span style={{ ...S.mono, fontSize: 12, color: "#00d4ff" }}>{exerciseLog}<span className="term-cursor"/></span></div>}
@@ -342,6 +400,7 @@ export default function Options() {
         )}
       </section>
 
+      {/* ── INFO GRID ── */}
       <section style={{ ...S.wrap, paddingTop: 0 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div style={{ border: "1px solid #1a1a1a", borderRadius: 8, padding: 28 }}>
